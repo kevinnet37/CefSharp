@@ -11,17 +11,23 @@ namespace CefSharp
     /// <summary>
     /// Class representing popup window features.
     /// </summary>
+    /// <exclude />
     public ref class PopupFeatures : IPopupFeatures
     {
     private:
         const CefPopupFeatures* _popupFeatures;
 
-    public:
+    internal:
+        /// <summary>
+        /// Constructor.
+        /// </summary>
+        /// <param name="popupFeatures">The popup features.</param>
         PopupFeatures(const CefPopupFeatures* popupFeatures)
         {
             _popupFeatures = popupFeatures;
         }
 
+    public:
         !PopupFeatures()
         {
             _popupFeatures = NULL;

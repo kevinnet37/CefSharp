@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using CefSharp.JavascriptBinding;
 
 namespace CefSharp.ModelBinding
 {
@@ -18,6 +19,12 @@ namespace CefSharp.ModelBinding
     public class DefaultBinder : IBinder
     {
         private static readonly MethodInfo ToArrayMethodInfo = typeof(Enumerable).GetMethod("ToArray", BindingFlags.Public | BindingFlags.Static);
+        private readonly IJavascriptNameConverter javascriptNameConverter;
+
+        public DefaultBinder(IJavascriptNameConverter javascriptNameConverter = null)
+        {
+            this.javascriptNameConverter = javascriptNameConverter;
+        }
 
         /// <summary>
         /// Bind to the given model type
@@ -29,6 +36,12 @@ namespace CefSharp.ModelBinding
         {
             if (obj == null)
             {
+                if (targetType.IsValueType)
+                {
+                    //For value types (int, double, etc) we cannot return null,
+                    //we need to return the default value for that type.
+                    return Activator.CreateInstance(targetType);
+                }
                 return null;
             }
 
@@ -61,6 +74,15 @@ namespace CefSharp.ModelBinding
             return BindObject(targetType, objType, obj);
         }
 
+        /// <summary>
+        /// Bind collection.
+        /// </summary>
+        /// <param name="targetType">the target param type.</param>
+        /// <param name="objType">Type of the object.</param>
+        /// <param name="obj">object to be converted into a model.</param>
+        /// <returns>
+        /// An object.
+        /// </returns>
         protected virtual object BindCollection(Type targetType, Type objType, object obj)
         {
             var collection = obj as ICollection;
@@ -97,27 +119,12 @@ namespace CefSharp.ModelBinding
             {
                 var val = list.ElementAtOrDefault(i);
 
-                //If the value is null then we'll add null to the collection,
-                if (val == null)
-                {
-                    //For value types like int we'll create the default value and assign that as we cannot assign null
-                    model.Add(genericType.IsValueType ? Activator.CreateInstance(genericType) : null);
-                }
-                else
-                {
-                    var valueType = val.GetType();
-                    //If the collection item is a list or dictionary then we'll attempt to bind it
-                    if (typeof(IDictionary<string, object>).IsAssignableFrom(valueType) ||
-                        typeof(IList<object>).IsAssignableFrom(valueType))
-                    {
-                        var subModel = Bind(val, genericType);
-                        model.Add(subModel);
-                    }
-                    else
-                    {
-                        model.Add(val);
-                    }
-                }
+                //Previously we only called bind for IDictionary<string, object>
+                // and IList<object>, we now bind for all values to allow for
+                // type conversion like int -> double where javascript gives
+                // us a mixed array of types, some int, some double (Issue #3129)
+                var result = Bind(val, genericType);
+                model.Add(result);
             }
 
             if (targetType.IsArray())
@@ -129,6 +136,15 @@ namespace CefSharp.ModelBinding
             return model;
         }
 
+        /// <summary>
+        /// Bind object.
+        /// </summary>
+        /// <param name="targetType">the target param type.</param>
+        /// <param name="objType">Type of the object.</param>
+        /// <param name="obj">object to be converted into a model.</param>
+        /// <returns>
+        /// An object.
+        /// </returns>
         protected virtual object BindObject(Type targetType, Type objType, object obj)
         {
             var model = Activator.CreateInstance(targetType, true);
@@ -138,13 +154,20 @@ namespace CefSharp.ModelBinding
             if (typeof(IDictionary<string, object>).IsAssignableFrom(objType))
             {
                 var dictionary = (IDictionary<string, object>)obj;
+                //TODO: Add Caching
                 var members = BindingMemberInfo.Collect(targetType).ToList();
 
+                //TODO: We currently go through all the propertie/fields and
+                //atempt to find a match in the dictionary, we should probably
+                //do the reverse and go through all the keys in the dictionary
+                //and see if there is a match to a property member
                 foreach (var modelProperty in members)
                 {
                     object val;
 
-                    if (dictionary.TryGetValue(modelProperty.Name, out val))
+                    var propertyName = GetPropertyName(modelProperty);
+
+                    if (dictionary.TryGetValue(propertyName, out val))
                     {
                         var propertyVal = Bind(val, modelProperty.Type);
 
@@ -154,6 +177,15 @@ namespace CefSharp.ModelBinding
             }
 
             return model;
+        }
+
+        private string GetPropertyName(BindingMemberInfo modelProperty)
+        {
+            if (javascriptNameConverter == null)
+            {
+                return modelProperty.Name;
+            }
+            return javascriptNameConverter.ConvertReturnedObjectPropertyAndFieldToNameJavascript(modelProperty);
         }
     }
 }

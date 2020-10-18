@@ -4,8 +4,8 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
-using CefSharp.Example.Properties;
 using CefSharp.Example.Proxy;
 using CefSharp.SchemeHandler;
 
@@ -15,9 +15,11 @@ namespace CefSharp.Example
     {
         //TODO: Revert after https://bitbucket.org/chromiumembedded/cef/issues/2685/networkservice-custom-scheme-unable-to
         //has been fixed.
-        public const string BaseUrl = "https://cefsharp.example";
+        public const string ExampleDomain = "cefsharp.example";
+        public const string BaseUrl = "https://" + ExampleDomain;
         public const string DefaultUrl = BaseUrl + "/home.html";
         public const string BindingTestUrl = BaseUrl + "/BindingTest.html";
+        public const string BindingTestNetCoreUrl = BaseUrl + "/BindingTestNetCore.html";
         public const string BindingTestSingleUrl = BaseUrl + "/BindingTestSingle.html";
         public const string BindingTestsAsyncTaskUrl = BaseUrl + "/BindingTestsAsyncTask.html";
         public const string LegacyBindingTestUrl = BaseUrl + "/LegacyBindingTest.html";
@@ -31,16 +33,20 @@ namespace CefSharp.Example
         public const string DragDropCursorsTestUrl = BaseUrl + "/DragDropCursorsTest.html";
         public const string CssAnimationTestUrl = BaseUrl + "/CssAnimationTest.html";
         public const string CdmSupportTestUrl = BaseUrl + "/CdmSupportTest.html";
+        public const string BindingApiCustomObjectNameTestUrl = BaseUrl + "/BindingApiCustomObjectNameTest.html";
         public const string TestResourceUrl = "http://test/resource/load";
         public const string RenderProcessCrashedUrl = "http://processcrashed";
         public const string TestUnicodeResourceUrl = "http://test/resource/loadUnicode";
         public const string PopupParentUrl = "http://www.w3schools.com/jsref/tryit.asp?filename=tryjsref_win_close";
+        public const string ChromeInternalUrls = "chrome://chrome-urls";
+        public const string ChromeNetInternalUrls = "chrome://net-internals";
+        public const string ChromeProcessInternalUrls = "chrome://process-internals";
 
         // Use when debugging the actual SubProcess, to make breakpoints etc. inside that project work.
         private static readonly bool DebuggingSubProcess = Debugger.IsAttached;
         private static string PluginInformation = "";
 
-        public static void Init(AbstractCefSettings settings, IBrowserProcessHandler browserProcessHandler)
+        public static void Init(CefSettingsBase settings, IBrowserProcessHandler browserProcessHandler)
         {
             // Set Google API keys, used for Geolocation requests sans GPS.  See http://www.chromium.org/developers/how-tos/api-keys
             // Environment.SetEnvironmentVariable("GOOGLE_API_KEY", "");
@@ -62,7 +68,11 @@ namespace CefSharp.Example
             settings.RemoteDebuggingPort = 8088;
             //The location where cache data will be stored on disk. If empty an in-memory cache will be used for some features and a temporary disk cache for others.
             //HTML5 databases such as localStorage will only persist across sessions if a cache path is specified. 
-            settings.CachePath = "cache";
+            settings.RootCachePath = Path.GetFullPath("cache");
+            //If non-null then CachePath must be equal to or a child of RootCachePath
+            //We're using a sub folder.
+            //
+            settings.CachePath = Path.GetFullPath("cache\\global");
             //settings.UserAgent = "CefSharp Browser" + Cef.CefSharpVersion; // Example User Agent
             //settings.CefCommandLineArgs.Add("renderer-process-limit", "1");
             //settings.CefCommandLineArgs.Add("renderer-startup-dialog");
@@ -72,6 +82,11 @@ namespace CefSharp.Example
             //settings.CefCommandLineArgs.Add("disable-plugins-discovery"); //Disable discovering third-party plugins. Effectively loading only ones shipped with the browser plus third-party ones as specified by --extra-plugin-dir and --load-plugin switches
             //settings.CefCommandLineArgs.Add("enable-system-flash"); //Automatically discovered and load a system-wide installation of Pepper Flash.
             //settings.CefCommandLineArgs.Add("allow-running-insecure-content"); //By default, an https page cannot run JavaScript, CSS or plugins from http URLs. This provides an override to get the old insecure behavior. Only available in 47 and above.
+            //https://peter.sh/experiments/chromium-command-line-switches/#disable-site-isolation-trials
+            //settings.CefCommandLineArgs.Add("disable-site-isolation-trials");
+            //NOTE: Running the Network Service in Process is not something CEF officially supports
+            //It may or may not work for newer versions.
+            //settings.CefCommandLineArgs.Add("enable-features", "CastMediaRouteProvider,NetworkServiceInProcess");
 
             //settings.CefCommandLineArgs.Add("enable-logging"); //Enable Logging for the Renderer process (will open with a cmd prompt and output debug messages - use in conjunction with setting LogSeverity = LogSeverity.Verbose;)
             //settings.LogSeverity = LogSeverity.Verbose; // Needed for enable-logging to output messages
@@ -110,6 +125,9 @@ namespace CefSharp.Example
             //Enables Uncaught exception handler
             settings.UncaughtExceptionStackSize = 10;
 
+            //Disable WebAssembly
+            //settings.JavascriptFlags = "--noexpose_wasm";
+
             // Off Screen rendering (WPF/Offscreen)
             if (settings.WindowlessRenderingEnabled)
             {
@@ -146,8 +164,13 @@ namespace CefSharp.Example
 
             if (DebuggingSubProcess)
             {
+
+#if NETCOREAPP
+                settings.BrowserSubprocessPath = Path.GetFullPath("..\\..\\..\\..\\..\\CefSharp.BrowserSubprocess\\bin.netcore\\Debug\\netcoreapp3.1\\CefSharp.BrowserSubprocess.exe");
+#else
                 var architecture = Environment.Is64BitProcess ? "x64" : "x86";
-                settings.BrowserSubprocessPath = "..\\..\\..\\..\\CefSharp.BrowserSubprocess\\bin\\" + architecture + "\\Debug\\CefSharp.BrowserSubprocess.exe";
+                settings.BrowserSubprocessPath = Path.GetFullPath("..\\..\\..\\..\\CefSharp.BrowserSubprocess\\bin\\" + architecture + "\\Debug\\CefSharp.BrowserSubprocess.exe");
+#endif
             }
 
             settings.RegisterScheme(new CefCustomScheme
@@ -161,7 +184,7 @@ namespace CefSharp.Example
             {
                 SchemeName = "https",
                 SchemeHandlerFactory = new CefSharpSchemeHandlerFactory(),
-                DomainName = "cefsharp.example"
+                DomainName = ExampleDomain
             });
 
             settings.RegisterScheme(new CefCustomScheme
@@ -180,16 +203,21 @@ namespace CefSharp.Example
                 IsSecure = true //treated with the same security rules as those applied to "https" URLs
             });
 
+            const string cefSharpExampleResourcesFolder =
+#if !NETCOREAPP
+                @"..\..\..\..\CefSharp.Example\Resources";
+#else
+                @"..\..\..\..\..\CefSharp.Example\Resources";
+#endif
+
             settings.RegisterScheme(new CefCustomScheme
             {
                 SchemeName = "localfolder",
-                SchemeHandlerFactory = new FolderSchemeHandlerFactory(rootFolder: @"..\..\..\..\CefSharp.Example\Resources",
+                SchemeHandlerFactory = new FolderSchemeHandlerFactory(rootFolder: cefSharpExampleResourcesFolder,
                                                                     schemeName: "localfolder", //Optional param no schemename checking if null
                                                                     hostName: "cefsharp", //Optional param no hostname checking if null
                                                                     defaultPage: "home.html") //Optional param will default to index.html
             });
-
-            settings.RegisterExtension(new V8Extension("cefsharp/example", Resources.extension));
 
             //This must be set before Cef.Initialized is called
             CefSharpSettings.FocusedNodeChangedEnabled = true;
@@ -212,7 +240,9 @@ namespace CefSharp.Example
             //see https://github.com/cefsharp/CefSharp/wiki/General-Usage#proxy-resolution
             //CefSharpSettings.Proxy = new ProxyOptions(ip: "127.0.0.1", port: "8080", username: "cefsharp", password: "123");
 
-            if (!Cef.Initialize(settings, performDependencyCheck: !DebuggingSubProcess, browserProcessHandler: browserProcessHandler))
+            bool performDependencyCheck = !DebuggingSubProcess;
+
+            if (!Cef.Initialize(settings, performDependencyCheck: performDependencyCheck, browserProcessHandler: browserProcessHandler))
             {
                 throw new Exception("Unable to Initialize Cef");
             }
@@ -222,7 +252,13 @@ namespace CefSharp.Example
 
         public static async void RegisterTestResources(IWebBrowser browser)
         {
+            if (browser.ResourceRequestHandlerFactory == null)
+            {
+                browser.ResourceRequestHandlerFactory = new ResourceRequestHandlerFactory();
+            }
+
             var handler = browser.ResourceRequestHandlerFactory as ResourceRequestHandlerFactory;
+
             if (handler != null)
             {
                 const string renderProcessCrashedBody = "<html><body><h1>Render Process Crashed</h1><p>Your seeing this message as the render process has crashed</p></body></html>";

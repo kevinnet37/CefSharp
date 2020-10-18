@@ -7,7 +7,6 @@
 #include "Stdafx.h"
 
 #include "SubProcess.h"
-#include "WcfEnabledSubProcess.h"
 
 using namespace System;
 using namespace CefSharp::Internals;
@@ -27,6 +26,29 @@ namespace CefSharp
             BrowserSubprocessExecutable()
             {
 
+            }
+
+            /// <summary>
+            /// This function should be called from the application entry point function (typically Program.Main)
+            /// to execute a secondary process e.g. gpu, plugin, renderer, utility
+            /// This overload is specifically used for .Net Core. For hosting your own BrowserSubProcess
+            /// it's preferable to use the Main method provided by this class.
+            /// - Obtains the command line args via a call to Environment::GetCommandLineArgs
+            /// - Calls CefEnableHighDPISupport before any other processing
+            /// </summary>
+            /// <returns>
+            /// If called for the browser process (identified by no "type" command-line value) it will return immediately
+            /// with a value of -1. If called for a recognized secondary process it will block until the process should exit
+            /// and then return the process exit code.
+            /// </returns
+            static int MainNetCore(IntPtr arg, int argLength)
+            {
+                SubProcess::EnableHighDPISupport();
+
+                auto args = Environment::GetCommandLineArgs();
+
+                auto subProcess = gcnew BrowserSubprocessExecutable();
+                return subProcess->Main(args, nullptr);
             }
 
             /// <summary>
@@ -66,6 +88,14 @@ namespace CefSharp
             int Main(IEnumerable<String^>^ args, IRenderProcessHandler^ handler)
             {
                 auto type = CommandLineArgsParser::GetArgumentValue(args, CefSharpArguments::SubProcessTypeArgument);
+
+                if (String::IsNullOrEmpty(type))
+                {
+                    //If --type param missing from command line CEF/Chromium assums
+                    //this is the main process (as all subprocesses must have a type param).
+                    //Return -1 to indicate this behaviour.
+                    return -1;
+                }
 
                 auto parentProcessId = -1;
 

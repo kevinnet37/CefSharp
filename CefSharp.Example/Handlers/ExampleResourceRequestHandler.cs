@@ -7,6 +7,7 @@ using System.IO;
 using System.Text;
 using CefSharp.Example.Filters;
 using CefSharp.Handler;
+using CefSharp.ResponseFilter;
 
 namespace CefSharp.Example.Handlers
 {
@@ -153,6 +154,14 @@ namespace CefSharp.Example.Handlers
                 //NOTE: You may need to use a different encoding depending on the request
                 var dataAsUtf8String = Encoding.UTF8.GetString(data);
             }
+        }
+
+        protected override void Dispose()
+        {
+            memoryStream?.Dispose();
+            memoryStream = null;
+
+            base.Dispose();
         }
     }
 }

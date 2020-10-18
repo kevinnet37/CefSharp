@@ -12,7 +12,6 @@ using CefSharp.Example;
 using CefSharp.Example.Handlers;
 using CefSharp.Example.JavascriptBinding;
 using CefSharp.WinForms.Example.Handlers;
-using CefSharp.WinForms.Internals;
 
 namespace CefSharp.WinForms.Example
 {
@@ -40,6 +39,8 @@ namespace CefSharp.WinForms.Example
             browser.RequestHandler = new WinFormsRequestHandler(openNewTab);
             browser.JsDialogHandler = new JsDialogHandler();
             browser.DownloadHandler = new DownloadHandler();
+            browser.AudioHandler = new AudioHandler();
+
             if (multiThreadedMessageLoopEnabled)
             {
                 browser.KeyboardHandler = new KeyboardHandler();
@@ -64,8 +65,12 @@ namespace CefSharp.WinForms.Example
             browser.IsBrowserInitializedChanged += OnIsBrowserInitializedChanged;
             browser.LoadError += OnLoadError;
 
+#if NETCOREAPP
+            browser.JavascriptObjectRepository.Register("boundAsync", new AsyncBoundObject(), options: BindingOptions.DefaultBinder);
+#else
             browser.JavascriptObjectRepository.Register("bound", new BoundObject(), isAsync: false, options: BindingOptions.DefaultBinder);
             browser.JavascriptObjectRepository.Register("boundAsync", new AsyncBoundObject(), isAsync: true, options: BindingOptions.DefaultBinder);
+#endif
 
             //If you call CefSharp.BindObjectAsync in javascript and pass in the name of an object which is not yet
             //bound, then ResolveObject will be called, you can then register it
@@ -74,7 +79,11 @@ namespace CefSharp.WinForms.Example
                 var repo = e.ObjectRepository;
                 if (e.ObjectName == "boundAsync2")
                 {
+#if NETCOREAPP
+                    repo.Register("boundAsync2", new AsyncBoundObject(), options: BindingOptions.DefaultBinder);
+#else
                     repo.Register("boundAsync2", new AsyncBoundObject(), isAsync: true, options: BindingOptions.DefaultBinder);
+#endif
                 }
             };
 
@@ -89,12 +98,15 @@ namespace CefSharp.WinForms.Example
             eventObject.EventArrived += OnJavascriptEventArrived;
             // Use the default of camelCaseJavascriptNames
             // .Net methods starting with a capitol will be translated to starting with a lower case letter when called from js
+#if !NETCOREAPP
             browser.JavascriptObjectRepository.Register("boundEvent", eventObject, isAsync: false, options: BindingOptions.DefaultBinder);
+#endif
 
             CefExample.RegisterTestResources(browser);
 
-            var version = String.Format("Chromium: {0}, CEF: {1}, CefSharp: {2}", Cef.ChromiumVersion, Cef.CefVersion, Cef.CefSharpVersion);
-            DisplayOutput(version);
+            var version = string.Format("Chromium: {0}, CEF: {1}, CefSharp: {2}", Cef.ChromiumVersion, Cef.CefVersion, Cef.CefSharpVersion);
+            //Set label directly, don't use DisplayOutput as call would be a NOOP (no valid handle yet).
+            outputLabel.Text = version;
         }
 
         /// <summary>
@@ -332,7 +344,7 @@ namespace CefSharp.WinForms.Example
 
         private void DisplayOutput(string output)
         {
-            this.InvokeOnUiThreadIfRequired(() => outputLabel.Text = output);
+            outputLabel.InvokeOnUiThreadIfRequired(() => outputLabel.Text = output);
         }
 
         private void HandleToolStripLayout(object sender, LayoutEventArgs e)
@@ -384,6 +396,13 @@ namespace CefSharp.WinForms.Example
             {
                 Browser.Load(url);
             }
+            else
+            {
+                var searchUrl = "https://www.google.com/search?q=" + Uri.EscapeDataString(url);
+
+                Browser.Load(searchUrl);
+            }
+
         }
 
         public async void CopySourceToClipBoardAsync()

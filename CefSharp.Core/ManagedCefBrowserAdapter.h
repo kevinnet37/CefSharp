@@ -19,17 +19,22 @@
 #include "Internals/JavascriptCallbackFactory.h"
 
 using namespace System::Diagnostics;
+#ifndef NETCOREAPP
 using namespace System::ServiceModel;
+using namespace CefSharp::Internals::Wcf;
+#endif
 using namespace System::Threading;
 using namespace System::Threading::Tasks;
-using namespace CefSharp::ModelBinding;
 
 namespace CefSharp
 {
+    /// <exclude />
     public ref class ManagedCefBrowserAdapter : public IBrowserAdapter
     {
         MCefRefPtr<ClientAdapter> _clientAdapter;
+#ifndef NETCOREAPP
         BrowserProcessServiceHost^ _browserProcessServiceHost;
+#endif
         IWebBrowserInternal^ _webBrowserInternal;
         JavascriptObjectRepository^ _javaScriptObjectRepository;
         JavascriptCallbackFactory^ _javascriptCallbackFactory;
@@ -39,8 +44,10 @@ namespace CefSharp
 
     private:
         void MethodInvocationComplete(Object^ sender, MethodInvocationCompleteArgs^ e);
+#ifndef NETCOREAPP
         void InitializeBrowserProcessServiceHost(IBrowser^ browser);
         void DisposeBrowserProcessServiceHost();
+#endif
 
     internal:
         MCefRefPtr<ClientAdapter> GetClientAdapter();
@@ -103,10 +110,12 @@ namespace CefSharp
                 _browserWrapper = nullptr;
             }
 
+#ifndef NETCOREAPP
             if (CefSharpSettings::WcfEnabled)
             {
                 DisposeBrowserProcessServiceHost();
             }
+#endif
 
             _webBrowserInternal = nullptr;
             delete _javaScriptObjectRepository;

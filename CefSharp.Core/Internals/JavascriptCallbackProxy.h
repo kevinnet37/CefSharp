@@ -9,9 +9,10 @@
 #include "include/cef_app.h"
 
 #include "..\ManagedCefBrowserAdapter.h"
-#include "Internals\CefSharpBrowserWrapper.h"
+#include "Internals\CefBrowserWrapper.h"
 
 using namespace System::Threading::Tasks;
+using namespace CefSharp::JavascriptBinding;
 
 namespace CefSharp
 {
@@ -20,16 +21,17 @@ namespace CefSharp
         private ref class JavascriptCallbackProxy : public IJavascriptCallback
         {
         private:
-            WeakReference^ _browserAdapter;
+            WeakReference<IBrowserAdapter^>^ _browserAdapter;
             JavascriptCallback^ _callback;
             PendingTaskRepository<JavascriptResponse^>^ _pendingTasks;
             bool _disposed;
 
             CefRefPtr<CefProcessMessage> CreateDestroyMessage();
             IBrowser^ GetBrowser();
+            IJavascriptNameConverter^ GetJavascriptNameConverter();
             void DisposedGuard();
         public:
-            JavascriptCallbackProxy(JavascriptCallback^ callback, PendingTaskRepository<JavascriptResponse^>^ pendingTasks, WeakReference^ browserAdapter)
+            JavascriptCallbackProxy(JavascriptCallback^ callback, PendingTaskRepository<JavascriptResponse^>^ pendingTasks, WeakReference<IBrowserAdapter^>^ browserAdapter)
                 :_callback(callback), _pendingTasks(pendingTasks), _disposed(false)
             {
                 _browserAdapter = browserAdapter;
@@ -45,7 +47,7 @@ namespace CefSharp
                 auto browser = GetBrowser();
                 if (browser != nullptr && !browser->IsDisposed)
                 {
-                    auto browserWrapper = static_cast<CefSharpBrowserWrapper^>(browser)->Browser;
+                    auto browserWrapper = static_cast<CefBrowserWrapper^>(browser)->Browser;
                     auto frame = browserWrapper->GetFrame(_callback->FrameId);
                     if (frame.get() && frame->IsValid())
                     {

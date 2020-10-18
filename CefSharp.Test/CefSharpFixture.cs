@@ -4,24 +4,29 @@
 
 using System;
 using System.IO;
-using System.Threading;
+using System.Net;
 using System.Threading.Tasks;
+using CefSharp.Example;
 using CefSharp.OffScreen;
+using Nito.AsyncEx;
+using Titanium.Web.Proxy;
+using Titanium.Web.Proxy.Models;
+using Xunit;
 
 namespace CefSharp.Test
 {
-    public class CefSharpFixture : IDisposable
+    public class CefSharpFixture : IAsyncLifetime, IDisposable
     {
-        private readonly TaskScheduler scheduler;
-        private readonly Thread thread;
+        private readonly AsyncContextThread contextThread;
+        private ProxyServer proxyServer;
 
         public CefSharpFixture()
         {
-            SynchronizationContext.SetSynchronizationContext(new SynchronizationContext());
+            contextThread = new AsyncContextThread();
+        }
 
-            scheduler = TaskScheduler.FromCurrentSynchronizationContext();
-            thread = Thread.CurrentThread;
-
+        private void CefInitialize()
+        {
             if (!Cef.IsInitialized)
             {
                 var isDefault = AppDomain.CurrentDomain.IsDefaultAppDomain();
@@ -30,7 +35,17 @@ namespace CefSharp.Test
                     throw new Exception(@"Add <add key=""xunit.appDomain"" value=""denied""/> to your app.config to disable appdomains");
                 }
 
+                Cef.EnableWaitForBrowsersToClose();
+
+                CefSharpSettings.ShutdownOnExit = false;
                 var settings = new CefSettings();
+
+                settings.RegisterScheme(new CefCustomScheme
+                {
+                    SchemeName = "https",
+                    SchemeHandlerFactory = new CefSharpSchemeHandlerFactory(),
+                    DomainName = CefExample.ExampleDomain
+                });
 
                 //The location where cache data will be stored on disk. If empty an in-memory cache will be used for some features and a temporary disk cache for others.
                 //HTML5 databases such as localStorage will only persist across sessions if a cache path is specified. 
@@ -40,20 +55,50 @@ namespace CefSharp.Test
             }
         }
 
+        private void CefShutdown()
+        {
+            if (Cef.IsInitialized)
+            {
+                Cef.Shutdown();
+            }
+
+            StopProxyServer();
+        }
+
+        public Task InitializeAsync()
+        {
+            return contextThread.Factory.StartNew(CefInitialize);
+        }
+
+        public Task DisposeAsync()
+        {
+            return contextThread.Factory.StartNew(CefShutdown);
+        }
+
         public void Dispose()
         {
-            var factory = new TaskFactory(scheduler);
+            contextThread.Dispose();
+        }
 
-            if (thread.IsAlive)
+        public void StartProxyServerIfRequired()
+        {
+            if (proxyServer == null)
             {
-                factory.StartNew(() =>
-                {
-                    if (Cef.IsInitialized)
-                    {
-                        Cef.Shutdown();
-                    }
-                });
+                proxyServer = new ProxyServer(userTrustRootCertificate: false);
+
+                var explicitEndPoint = new ExplicitProxyEndPoint(IPAddress.Loopback, 8080, false);
+
+                // An explicit endpoint is where the client knows about the existence of a proxy
+                // So client sends request in a proxy friendly manner
+                proxyServer.AddEndPoint(explicitEndPoint);
+                proxyServer.Start();
             }
+        }
+
+        public void StopProxyServer()
+        {
+            proxyServer?.Stop();
+            proxyServer = null;
         }
     }
 }

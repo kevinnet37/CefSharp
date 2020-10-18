@@ -6,7 +6,6 @@ using System;
 using System.ComponentModel;
 using System.Windows.Forms;
 using CefSharp.Example.JavascriptBinding;
-using CefSharp.WinForms.Internals;
 
 namespace CefSharp.WinForms.Example.Minimal
 {
@@ -68,7 +67,10 @@ namespace CefSharp.WinForms.Example.Minimal
             browser.StatusMessage += OnBrowserStatusMessage;
             browser.TitleChanged += OnBrowserTitleChanged;
             browser.AddressChanged += OnBrowserAddressChanged;
-            browser.JavascriptObjectRepository.Register("bound", new BoundObject());
+#if !NETCOREAPP
+            browser.JavascriptObjectRepository.Register("bound", new BoundObject(), false);
+#endif
+
             if (!multiThreadedMessageLoop)
             {
                 browser.FocusHandler = null;

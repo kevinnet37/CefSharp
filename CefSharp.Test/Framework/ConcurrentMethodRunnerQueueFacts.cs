@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CefSharp.Example.JavascriptBinding;
 using CefSharp.Internals;
+using Nito.AsyncEx;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -26,7 +27,12 @@ namespace CefSharp.Test.Framework
             var boundObject = new AsyncBoundObject();
 
             var objectRepository = new JavascriptObjectRepository();
-            objectRepository.Register("testObject", boundObject, true, new BindingOptions { CamelCaseJavascriptNames = false });
+            objectRepository.NameConverter = null;
+#if NETCOREAPP
+            objectRepository.Register("testObject", boundObject, BindingOptions.DefaultBinder);
+#else
+            objectRepository.Register("testObject", boundObject, true, BindingOptions.DefaultBinder);
+#endif
             var methodInvocation = new MethodInvocation(1, 1, 1, nameof(boundObject.AsyncWaitTwoSeconds), 1);
             methodInvocation.Parameters.Add("Echo Me!");
             var methodRunnerQueue = new ConcurrentMethodRunnerQueue(objectRepository);
@@ -41,25 +47,31 @@ namespace CefSharp.Test.Framework
             Assert.Null(ex);
         }
 
-        [Fact]
-        public void ValidateAsyncTaskMethodOutput()
+        [Fact(Skip = "Times out when run through appveyor, issue https://github.com/cefsharp/CefSharp/issues/3067")]
+        public async Task ValidateAsyncTaskMethodOutput()
         {
             const string expectedResult = "Echo Me!";
             var boundObject = new AsyncBoundObject();
 
             var objectRepository = new JavascriptObjectRepository();
-            objectRepository.Register("testObject", boundObject, true, new BindingOptions { CamelCaseJavascriptNames = false });
+            objectRepository.NameConverter = null;
+#if NETCOREAPP
+            objectRepository.Register("testObject", boundObject, BindingOptions.DefaultBinder);
+#else
+            objectRepository.Register("testObject", boundObject, true, BindingOptions.DefaultBinder);
+#endif
             var methodInvocation = new MethodInvocation(1, 1, 1, nameof(boundObject.AsyncWaitTwoSeconds), 1);
             methodInvocation.Parameters.Add(expectedResult);
             var methodRunnerQueue = new ConcurrentMethodRunnerQueue(objectRepository);
-            var manualResetEvent = new ManualResetEvent(false);
+            var manualResetEvent = new AsyncManualResetEvent();
+            var cancellationToken = new CancellationTokenSource();
+
+            cancellationToken.CancelAfter(5000);
 
             var actualResult = "";
 
             methodRunnerQueue.MethodInvocationComplete += (sender, args) =>
             {
-                methodRunnerQueue.Dispose();
-
                 actualResult = args.Result.Result.ToString();
 
                 manualResetEvent.Set();
@@ -67,9 +79,11 @@ namespace CefSharp.Test.Framework
 
             methodRunnerQueue.Enqueue(methodInvocation);
 
-            manualResetEvent.WaitOne(3000);
+            await manualResetEvent.WaitAsync(cancellationToken.Token);
 
             Assert.Equal(expectedResult, actualResult);
+
+            methodRunnerQueue.Dispose();
         }
     }
 }

@@ -159,8 +159,10 @@ namespace CefSharp
                     for each (System::Collections::DictionaryEntry entry in dictionary)
                     {
                         auto key = StringUtils::ToNative(Convert::ToString(entry.Key));
-                        auto value = entry.Value;
-                        SerializeV8Object(cefDictionary, key, value);
+                        auto entryValue = entry.Value;
+                        //We don't pass a nameConverter here as the keys should
+                        //remain unchanged
+                        SerializeV8Object(cefDictionary, key, entryValue, nullptr);
                     }
 
                     cefValue->SetDictionary(cefDictionary);
@@ -173,7 +175,9 @@ namespace CefSharp
                     int i = 0;
                     for each (Object^ arrObj in enumerable)
                     {
-                        SerializeV8Object(cefList, i, arrObj);
+                        //We don't pass a nameConverter here as the keys should
+                        //remain unchanged
+                        SerializeV8Object(cefList, i, arrObj, nullptr);
 
                         i++;
                     }
@@ -237,7 +241,7 @@ namespace CefSharp
                 CefDictionaryValue::KeyList keys;
                 dictionary->GetKeys(keys);
 
-                for (auto i = 0; i < keys.size(); i++)
+                for (size_t i = 0; i < keys.size(); i++)
                 {
                     auto key = StringUtils::ToClr(keys[i]);
                     auto value = DeserializeObject(dictionary, keys[i], nullptr);
@@ -251,7 +255,7 @@ namespace CefSharp
             static List<Object^>^ FromNative(const CefRefPtr<CefListValue>& list)
             {
                 auto result = gcnew List<Object^>(list->GetSize());
-                for (auto i = 0; i < list->GetSize(); i++)
+                for (size_t i = 0; i < list->GetSize(); i++)
                 {
                     result->Add(DeserializeObject(list, i, nullptr));
                 }
@@ -286,6 +290,8 @@ namespace CefSharp
                     cookie->HttpOnly = cefCookie.httponly == 1;
                     cookie->Creation = ConvertCefTimeToDateTime(cefCookie.creation);
                     cookie->LastAccess = ConvertCefTimeToDateTime(cefCookie.last_access);
+                    cookie->SameSite = (CefSharp::Enums::CookieSameSite)cefCookie.same_site;
+                    cookie->Priority = (CefSharp::Enums::CookiePriority)cefCookie.priority;
 
                     if (cefCookie.has_expires)
                     {
@@ -299,7 +305,7 @@ namespace CefSharp
             static NavigationEntry^ FromNative(const CefRefPtr<CefNavigationEntry> entry, bool current)
             {
                 SslStatus^ sslStatus;
-              
+
                 if (!entry.get())
                 {
                     return nullptr;

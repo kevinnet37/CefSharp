@@ -5,14 +5,14 @@
 #include "Stdafx.h"
 #include <msclr/lock.h>
 
-#include "Internals\CefSharpBrowserWrapper.h"
-#include "Internals\CefRequestWrapper.h"
+#include "UrlRequest.h"
+#include "Request.h"
+#include "Internals\CefBrowserWrapper.h"
 #include "Internals\CefFrameWrapper.h"
-#include "Internals\StringVisitor.h"
+#include "Internals\CefStringVisitorAdapter.h"
 #include "Internals\ClientAdapter.h"
 #include "Internals\Serialization\Primitives.h"
 #include "Internals\Messaging\Messages.h"
-#include "Internals\CefURLRequestWrapper.h"
 #include "Internals\CefURLRequestClientAdapter.h" 
 
 using namespace CefSharp::Internals::Messaging;
@@ -138,7 +138,7 @@ Task<String^>^ CefFrameWrapper::GetSourceAsync()
     ThrowIfFrameInvalid();
 
     auto taskStringVisitor = gcnew TaskStringVisitor();
-    _frame->GetSource(new StringVisitor(taskStringVisitor));
+    _frame->GetSource(new CefStringVisitorAdapter(taskStringVisitor));
     return taskStringVisitor->Task;
 }
 
@@ -152,7 +152,7 @@ void CefFrameWrapper::GetSource(IStringVisitor^ visitor)
     ThrowIfDisposed();
     ThrowIfFrameInvalid();
 
-    _frame->GetSource(new StringVisitor(visitor));
+    _frame->GetSource(new CefStringVisitorAdapter(visitor));
 }
 
 ///
@@ -166,7 +166,7 @@ Task<String^>^ CefFrameWrapper::GetTextAsync()
     ThrowIfFrameInvalid();
 
     auto taskStringVisitor = gcnew TaskStringVisitor();
-    _frame->GetText(new StringVisitor(taskStringVisitor));
+    _frame->GetText(new CefStringVisitorAdapter(taskStringVisitor));
     return taskStringVisitor->Task;
 }
 
@@ -180,7 +180,7 @@ void CefFrameWrapper::GetText(IStringVisitor^ visitor)
     ThrowIfDisposed();
     ThrowIfFrameInvalid();
 
-    _frame->GetText(new StringVisitor(visitor));
+    _frame->GetText(new CefStringVisitorAdapter(visitor));
 }
 
 
@@ -193,7 +193,7 @@ void CefFrameWrapper::LoadRequest(IRequest^ request)
     ThrowIfDisposed();
     ThrowIfFrameInvalid();
 
-    auto requestWrapper = (CefRequestWrapper^)request;
+    auto requestWrapper = (Request^)request;
     _frame->LoadRequest(requestWrapper);
 }
 
@@ -225,7 +225,7 @@ void CefFrameWrapper::ExecuteJavaScriptAsync(String^ code, String^ scriptUrl, in
     _frame->ExecuteJavaScript(StringUtils::ToNative(code), StringUtils::ToNative(scriptUrl), startLine);
 }
 
-Task<JavascriptResponse^>^ CefFrameWrapper::EvaluateScriptAsync(String^ script, String^ scriptUrl, int startLine, Nullable<TimeSpan> timeout)
+Task<JavascriptResponse^>^ CefFrameWrapper::EvaluateScriptAsync(String^ script, String^ scriptUrl, int startLine, Nullable<TimeSpan> timeout, bool useImmediatelyInvokedFuncExpression)
 {
     ThrowIfDisposed();
     ThrowIfFrameInvalid();
@@ -245,6 +245,11 @@ Task<JavascriptResponse^>^ CefFrameWrapper::EvaluateScriptAsync(String^ script, 
 
     //create a new taskcompletionsource
     auto idAndComplectionSource = pendingTaskRepository->CreatePendingTask(timeout);
+
+    if (useImmediatelyInvokedFuncExpression)
+    {
+        script = "(function() { let cefSharpInternalCallbackId = " + idAndComplectionSource.Key + "; " + script + " })();";
+    }
 
     auto message = CefProcessMessage::Create(kEvaluateJavascriptRequest);
     auto argList = message->GetArgumentList();
@@ -379,7 +384,7 @@ IBrowser^ CefFrameWrapper::Browser::get()
         return _owningBrowser;
     }
 
-    _owningBrowser = gcnew CefSharpBrowserWrapper(_frame->GetBrowser());
+    _owningBrowser = gcnew CefBrowserWrapper(_frame->GetBrowser());
     return _owningBrowser;
 }
 
@@ -392,7 +397,7 @@ IRequest^ CefFrameWrapper::CreateRequest(bool initializePostData)
         request->SetPostData(CefPostData::Create());
     }
 
-    return gcnew CefRequestWrapper(request);
+    return gcnew Request(request);
 }
 
 IUrlRequest^ CefFrameWrapper::CreateUrlRequest(IRequest^ request, IUrlRequestClient^ client)
@@ -410,10 +415,10 @@ IUrlRequest^ CefFrameWrapper::CreateUrlRequest(IRequest^ request, IUrlRequestCli
     }
 
     auto urlRequest = _frame->CreateURLRequest(
-        (CefRequestWrapper^)request,
+        (Request^)request,
         new CefUrlRequestClientAdapter(client));
 
-    return gcnew CefUrlRequestWrapper(urlRequest);
+    return gcnew UrlRequest(urlRequest);
 }
 
 void CefFrameWrapper::ThrowIfFrameInvalid()

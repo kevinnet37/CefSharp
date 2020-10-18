@@ -50,6 +50,7 @@ namespace CefSharp
             virtual Task<double>^ GetZoomLevelAsync();
             virtual IntPtr GetWindowHandle();
             virtual void CloseBrowser(bool forceClose);
+            virtual bool TryCloseBrowser();
 
             virtual void DragTargetDragEnter(IDragData^ dragData, MouseEvent mouseEvent, DragOperationsMask allowedOperations);
             virtual void DragTargetDragOver(MouseEvent mouseEvent, DragOperationsMask allowedOperations);
@@ -69,6 +70,11 @@ namespace CefSharp
             {
                 bool get();
             }
+
+            virtual bool SendDevToolsMessage(String^ messageAsJson);
+            virtual int ExecuteDevToolsMethod(int messageId, String^ method, String^ paramsAsJson);
+            virtual int ExecuteDevToolsMethod(int messageId, String^ method, IDictionary<String^, Object^>^ paramaters);
+            virtual IRegistration^ AddDevToolsMessageObserver(IDevToolsMessageObserver^ observer);
 
             virtual void AddWordToDictionary(String^ word);
             virtual void ReplaceMisspelling(String^ word);
@@ -99,8 +105,8 @@ namespace CefSharp
                 bool get();
             }
 
-            virtual void ImeSetComposition(String^ text, cli::array<CompositionUnderline>^ underlines, Nullable<Range> replacementRange, Nullable<Range> selectionRange);
-            virtual void ImeCommitText(String^ text, Nullable<Range> replacementRange, int relativeCursorPos);
+            virtual void ImeSetComposition(String^ text, cli::array<CompositionUnderline>^ underlines, Nullable<CefSharp::Structs::Range> replacementRange, Nullable<CefSharp::Structs::Range> selectionRange);
+            virtual void ImeCommitText(String^ text, Nullable<CefSharp::Structs::Range> replacementRange, int relativeCursorPos);
             virtual void ImeFinishComposingText(bool keepSelection);
             virtual void ImeCancelComposition();
 
